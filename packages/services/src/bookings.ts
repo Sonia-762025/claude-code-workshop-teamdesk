@@ -7,6 +7,7 @@ import {
   getBooking,
   insertBooking,
   listMemberBookings,
+  listMemberBookingsInRange,
   listRoomBookings,
   updateBookingTimes,
 } from "@repo/db/bookings";
@@ -54,10 +55,29 @@ export const rescheduleBookingInput = z.object({
 
 export type RescheduleBookingInput = z.input<typeof rescheduleBookingInput>;
 
+/** A local day is 23 to 25 hours long around a daylight saving change. */
+const MAX_DAY_WINDOW_HOURS = 26;
+
+/** A viewer's day as two instants, [from, to). */
+export const dayWindowInput = z.object({
+  from: z.iso.datetime(),
+  to: z.iso.datetime(),
+});
+
 export interface BookingsService {
   /** Throws ForbiddenError unless the actor owns the booking or is an admin. */
   cancel: (actorId: string, bookingId: string) => Promise<Booking>;
   create: (actorId: string, input: CreateBookingInput) => Promise<Booking>;
+  /**
+   * The member's active bookings that overlap [from, to). The caller picks the
+   * window (a viewer's local day). Throws ValidationError if it is empty or
+   * longer than MAX_DAY_WINDOW_HOURS.
+   */
+  listForMemberInRange: (
+    memberId: string,
+    from: string,
+    to: string
+  ) => Promise<Booking[]>;
   /** A room's active bookings on the UTC day `day` falls on. */
   listForRoom: (roomId: string, day: string) => Promise<Booking[]>;
   /** The member's active bookings that have not ended by `now`. */
@@ -165,7 +185,7 @@ export const createBookingsService = (db: Database): BookingsService => ({
     // The overlap check above can race with another request for the same
     // slot. The unique index on (room, start) catches that case.
     try {
-      return insertBooking(db, {
+      return await insertBooking(db, {
         attendees: data.attendees,
         endsAt,
         memberId: actorId,
@@ -181,6 +201,22 @@ export const createBookingsService = (db: Database): BookingsService => ({
       }
       throw error;
     }
+  },
+  listForMemberInRange: async (memberId, from, to) => {
+    const window = dayWindowInput.parse({ from, to });
+    const hours = minutesBetween(window.from, window.to) / 60;
+    if (hours <= 0) {
+      throw new ValidationError("The day must end after it starts.");
+    }
+    if (hours > MAX_DAY_WINDOW_HOURS) {
+      throw new ValidationError(
+        `A day can span at most ${MAX_DAY_WINDOW_HOURS} hours.`
+      );
+    }
+    return await listMemberBookingsInRange(db, memberId, {
+      from: toUtcIso(window.from),
+      to: toUtcIso(window.to),
+    });
   },
   listForRoom: (roomId, day) => {
     const { end, start } = utcDayBounds(day);

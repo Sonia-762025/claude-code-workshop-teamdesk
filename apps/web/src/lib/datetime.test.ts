@@ -4,6 +4,8 @@ import {
   formatUtcRange,
   formatUtcTime,
   isoFromDayAndTime,
+  localDayWindow,
+  todayLocal,
   todayUtc,
 } from "./datetime.ts";
 
@@ -40,5 +42,27 @@ describe("datetime", () => {
 
   test("isoFromDayAndTime rejects a bad time", () => {
     expect(() => isoFromDayAndTime("2026-10-20", "25:00")).toThrow();
+  });
+});
+
+describe("local day helpers", () => {
+  // Built from local parts, so these hold in any timezone the tests run in.
+  const lateEvening = new Date(2026, 9, 23, 23, 45);
+
+  test("todayLocal uses the local date, not the UTC one", () => {
+    expect(todayLocal(lateEvening)).toBe("2026-10-23");
+  });
+
+  test("localDayWindow runs from local midnight to the next", () => {
+    expect(localDayWindow(lateEvening)).toEqual({
+      from: new Date(2026, 9, 23).toISOString(),
+      to: new Date(2026, 9, 24).toISOString(),
+    });
+  });
+
+  test("localDayWindow contains the moment it was built from", () => {
+    const { from, to } = localDayWindow(lateEvening);
+    expect(Date.parse(from)).toBeLessThanOrEqual(lateEvening.getTime());
+    expect(Date.parse(to)).toBeGreaterThan(lateEvening.getTime());
   });
 });

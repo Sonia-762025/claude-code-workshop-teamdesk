@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "teamdesk",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-lc",
+        "export PATH=\"$HOME/.bun/bin:$PATH\" && bun run dev"
+      ],
+      "port": 3000
+    }
+  ]
+}

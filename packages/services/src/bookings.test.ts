@@ -165,3 +165,84 @@ describe("bookings service", () => {
     expect(tomorrow.startsAt).toBe(nextDay("09:00"));
   });
 });
+
+describe("listForMemberInRange", () => {
+  // 23 October 2026 in Sydney (UTC+11): 13:00 UTC the day before to 13:00 UTC.
+  const FROM = "2026-10-22T13:00:00.000Z";
+  const TO = "2026-10-23T13:00:00.000Z";
+
+  test("returns the member's active bookings that overlap the window, earliest first", async () => {
+    const room = team.bigRoom.id;
+    const before = await bookings.create(team.ana.id, {
+      ...standUp(room, "2026-10-22T10:00:00.000Z", "2026-10-22T10:30:00.000Z"),
+    });
+    const crossing = await bookings.create(
+      team.ana.id,
+      standUp(room, "2026-10-22T12:30:00.000Z", "2026-10-22T13:30:00.000Z")
+    );
+    const inside = await bookings.create(
+      team.ana.id,
+      standUp(room, at("09:00"), at("09:30"))
+    );
+    const cancelled = await bookings.create(
+      team.ana.id,
+      standUp(room, at("10:00"), at("10:30"))
+    );
+    await bookings.cancel(team.ana.id, cancelled.id);
+    const touchingEnd = await bookings.create(
+      team.ana.id,
+      standUp(room, TO, "2026-10-23T14:00:00.000Z")
+    );
+    const someoneElses = await bookings.create(
+      team.ben.id,
+      standUp(team.smallRoom.id, at("09:00"), at("09:30"))
+    );
+
+    const result = await bookings.listForMemberInRange(team.ana.id, FROM, TO);
+
+    expect(result.map((b) => b.id)).toEqual([crossing.id, inside.id]);
+    for (const excluded of [before, cancelled, touchingEnd, someoneElses]) {
+      expect(result.map((b) => b.id)).not.toContain(excluded.id);
+    }
+  });
+
+  test("a booking just before UTC midnight belongs to the next day in Sydney", async () => {
+    const lateNight = await bookings.create(
+      team.ana.id,
+      standUp(
+        team.bigRoom.id,
+        "2026-10-22T23:30:00.000Z",
+        "2026-10-23T00:00:00.000Z"
+      )
+    );
+
+    const sydney = await bookings.listForMemberInRange(team.ana.id, FROM, TO);
+    const utc = await bookings.listForMemberInRange(
+      team.ana.id,
+      at("00:00"),
+      "2026-10-24T00:00:00.000Z"
+    );
+
+    expect(sydney.map((b) => b.id)).toEqual([lateNight.id]);
+    expect(utc).toEqual([]);
+  });
+
+  test("rejects an empty or backwards window", async () => {
+    await expect(
+      bookings.listForMemberInRange(team.ana.id, TO, FROM)
+    ).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(
+      bookings.listForMemberInRange(team.ana.id, FROM, FROM)
+    ).rejects.toMatchObject({ code: "VALIDATION" });
+  });
+
+  test("rejects a window longer than a day", async () => {
+    await expect(
+      bookings.listForMemberInRange(
+        team.ana.id,
+        FROM,
+        "2026-10-24T13:00:00.000Z"
+      )
+    ).rejects.toMatchObject({ code: "VALIDATION" });
+  });
+});

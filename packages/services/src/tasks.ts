@@ -41,7 +41,14 @@ export interface TasksService {
     today: string
   ) => Promise<Task>;
   list: (filter?: { assigneeId?: string }) => Promise<Task[]>;
+  /**
+   * The assignee's open tasks due on `today` (YYYY-MM-DD) or earlier, oldest
+   * due date first. Tasks with no due date are left out.
+   */
+  listDueBy: (assigneeId: string, today: string) => Promise<Task[]>;
 }
+
+const todayInput = z.iso.date();
 
 export const createTasksService = (db: Database): TasksService => ({
   assign: async (actorId, taskId, assigneeId) => {
@@ -90,4 +97,13 @@ export const createTasksService = (db: Database): TasksService => ({
     return await insertTask(db, { ...data, createdById: actorId });
   },
   list: (filter) => listTasks(db, filter),
+  listDueBy: async (assigneeId, today) => {
+    const day = todayInput.parse(today);
+    // listTasks already orders open tasks by due date, then id.
+    const mine = await listTasks(db, { assigneeId });
+    return mine.filter(
+      (task) =>
+        task.completedAt === null && task.dueOn !== null && task.dueOn <= day
+    );
+  },
 });

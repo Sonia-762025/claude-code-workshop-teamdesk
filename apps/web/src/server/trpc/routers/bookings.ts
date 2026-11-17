@@ -1,5 +1,6 @@
 import {
   createBookingInput,
+  dayWindowInput,
   rescheduleBookingInput,
 } from "@repo/services/bookings";
 import { z } from "zod";
@@ -15,6 +16,15 @@ export const bookingsRouter = router({
     .input(z.object({ actorId: z.string(), booking: createBookingInput }))
     .mutation(({ ctx, input }) =>
       ctx.services.bookings.create(input.actorId, input.booking)
+    ),
+  forMemberDay: publicProcedure
+    .input(dayWindowInput.extend({ memberId: z.string() }))
+    .query(({ ctx, input }) =>
+      ctx.services.bookings.listForMemberInRange(
+        input.memberId,
+        input.from,
+        input.to
+      )
     ),
   forRoom: publicProcedure
     .input(z.object({ day: z.iso.datetime(), roomId: z.string() }))

@@ -73,3 +73,32 @@ describe("tasks service", () => {
     });
   });
 });
+
+describe("tasks.listDueBy", () => {
+  // Tasks are created as if it were 1 October so past due dates are allowed.
+  const CREATED_ON = "2026-10-01";
+  const add = (
+    title: string,
+    assigneeId: string | null,
+    dueOn: string | null
+  ) => tasks.create(team.admin.id, { assigneeId, dueOn, title }, CREATED_ON);
+
+  test("returns open tasks due today or earlier, oldest first", async () => {
+    const dueToday = await add("Due today", team.ana.id, TODAY);
+    const overdue = await add("Overdue", team.ana.id, "2026-10-20");
+    await add("Tomorrow", team.ana.id, "2026-10-24");
+    await add("No date", team.ana.id, null);
+    await add("Not mine", team.ben.id, TODAY);
+    await add("Unassigned", null, TODAY);
+    const done = await add("Done", team.ana.id, TODAY);
+    await tasks.complete(team.admin.id, done.id);
+
+    const result = await tasks.listDueBy(team.ana.id, TODAY);
+
+    expect(result.map((task) => task.id)).toEqual([overdue.id, dueToday.id]);
+  });
+
+  test("rejects a malformed date", async () => {
+    await expect(tasks.listDueBy(team.ana.id, "23/10/2026")).rejects.toThrow();
+  });
+});

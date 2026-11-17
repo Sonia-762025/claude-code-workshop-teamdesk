@@ -27,6 +27,13 @@ export const tasksRouter = router({
     .mutation(({ ctx, input }) =>
       ctx.services.tasks.create(input.actorId, input.task, todayUtc())
     ),
+  // `today` is the viewer's local date; the browser knows it, the Worker (UTC)
+  // does not.
+  dueBy: publicProcedure
+    .input(z.object({ assigneeId: z.string(), today: z.iso.date() }))
+    .query(({ ctx, input }) =>
+      ctx.services.tasks.listDueBy(input.assigneeId, input.today)
+    ),
   list: publicProcedure
     .input(z.object({ assigneeId: z.string().optional() }).optional())
     .query(({ ctx, input }) => ctx.services.tasks.list(input)),
